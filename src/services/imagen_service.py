@@ -230,35 +230,38 @@ def clasificar_y_guardar_imagen(product_id, datos_producto, imagen_bytes, mime_t
         'url': f'/imagen/mongo/{original_id}',
         'tamano_imagen': len(imagen_bytes),
         'tamano_imagen_comprimida': None,
+        'compressed_file_id': None,
         'tipo': 'original',
         'mime_type': mime_type,
         'ruta_local_encriptada': original_local['ruta'],
         'categoria_local': original_local['categoria'],
+        'original_file_id': str(original_id),
+        'url_original': None,
     }
 
-    compressed = _compress_image(imagen_bytes)
-    compressed_id = fs.files.insert_one({
-        'producto_id': product_id,
-        'tipo_archivo': 'compressed',
-        'mimetype': 'image/jpeg',
-        'tamanio': len(compressed),
-        'source': source,
-    }).inserted_id
-    fs.chunks.insert_one({'files_id': compressed_id, 'n': 0, 'data': compressed})
-    compressed_local = guardar_archivo_local_encriptado(compressed, f'{product_id}_{datos_producto.get("producto", "producto")}_compressed.jpg', 'comprimidas', is_compressed=True)
-    metadata['url'] = f'/imagen/mongo/{compressed_id}'
-    metadata['tamano_imagen_comprimida'] = len(compressed)
-    metadata['compressed_file_id'] = str(compressed_id)
-    metadata['tipo'] = 'compressed'
-    metadata['original_file_id'] = str(original_id)
-    metadata['url_original'] = f'/imagen/original/{original_id}'
-    metadata['compressed_mimetype'] = 'image/jpeg'
-    metadata['ruta_local_encriptada_comprimida'] = compressed_local['ruta']
-    metadata['categoria_local_comprimida'] = compressed_local['categoria']
+    if len(imagen_bytes) > 3 * 1024 * 1024:
+        compressed = _compress_image(imagen_bytes)
+        compressed_id = fs.files.insert_one({
+            'producto_id': product_id,
+            'tipo_archivo': 'compressed',
+            'mimetype': 'image/jpeg',
+            'tamanio': len(compressed),
+            'source': source,
+        }).inserted_id
+        fs.chunks.insert_one({'files_id': compressed_id, 'n': 0, 'data': compressed})
+        compressed_local = guardar_archivo_local_encriptado(compressed, f'{product_id}_{datos_producto.get("producto", "producto")}_compressed.jpg', 'comprimidas', is_compressed=True)
+        metadata['url'] = f'/imagen/mongo/{compressed_id}'
+        metadata['tamano_imagen_comprimida'] = len(compressed)
+        metadata['compressed_file_id'] = str(compressed_id)
+        metadata['tipo'] = 'compressed'
+        metadata['url_original'] = f'/imagen/original/{original_id}'
+        metadata['compressed_mimetype'] = 'image/jpeg'
+        metadata['ruta_local_encriptada_comprimida'] = compressed_local['ruta']
+        metadata['categoria_local_comprimida'] = compressed_local['categoria']
 
     db.producto.insert_one(metadata)
     return {
-        'kind': 'mongo_compressed',
+        'kind': 'mongo_original' if metadata.get('tamano_imagen_comprimida') is None else 'mongo_compressed',
         'metadata': metadata,
         'mongo_original_id': original_id,
         'mongo_compressed_id': metadata.get('compressed_file_id'),

@@ -50,18 +50,15 @@ def _mongo_metadata_por_producto(producto_id):
 
 def _eliminar_mongo_producto(producto_id):
     db = get_mongo_connection()
-    metadata = db.producto.find({'producto_id': producto_id})
-    for doc in list(metadata):
-        if doc.get('original_file_id'):
+    metadata = list(db.producto.find({'$or': [{'producto_id': producto_id}, {'idproducto': producto_id}]}))
+    for doc in metadata:
+        for key in ('original_file_id', 'compressed_file_id'):
+            file_id = doc.get(key)
+            if not file_id:
+                continue
             try:
-                db.fs.files.delete_one({'_id': ObjectId(doc['original_file_id'])})
-                db.fs.chunks.delete_many({'files_id': ObjectId(doc['original_file_id'])})
-            except Exception:
-                pass
-        if doc.get('compressed_file_id'):
-            try:
-                db.fs.files.delete_one({'_id': ObjectId(doc['compressed_file_id'])})
-                db.fs.chunks.delete_many({'files_id': ObjectId(doc['compressed_file_id'])})
+                db.fs.files.delete_one({'_id': ObjectId(file_id)})
+                db.fs.chunks.delete_many({'files_id': ObjectId(file_id)})
             except Exception:
                 pass
         db.producto.delete_one({'_id': doc['_id']})
@@ -82,11 +79,13 @@ def _crear_mongo_metadata(producto_id, datos, prepared):
         'url': f'/imagen/mongo/{original_id}',
         'tamano_imagen': len(payload),
         'tamano_imagen_comprimida': None,
+        'compressed_file_id': None,
         'tipo': 'original',
         'mime_type': prepared['mimetype'],
         'original_file_id': str(original_id),
+        'url_original': None,
     }
-    if len(payload) > 1 * 1024 * 1024:
+    if len(payload) > 3 * 1024 * 1024:
         from src.services.imagen_service import _compress_image
         compressed = _compress_image(payload)
         compressed_id = fs.put(compressed, filename=f'compressed_{prepared["nombre"]}', contentType='image/jpeg', producto_id=producto_id, tipo='compressed', mime_type='image/jpeg')

@@ -225,8 +225,88 @@ Esto valida:
 - acceso explícito a la imagen original desde popup/modal
 - almacenamiento cifrado en local
 - carpeta de imágenes comprimidas
+- validación real de MongoDB por tamaño: 1–3 MB conserva `tamano_imagen`, deja `tamano_imagen_comprimida` en `null` y `compressed_file_id` en `null`; >3 MB genera `tamano_imagen_comprimida` y `compressed_file_id`
 
-### 10) Editar una imagen existente
+### 10) Validación de MongoDB por tamaño
+La base de datos debe reflejar esta regla:
+
+```text
+<= 1 MB -> MySQL
+> 1 MB y <= 3 MB -> Mongo original
+   tamano_imagen = tamaño real
+   tamano_imagen_comprimida = null
+   compressed_file_id = null
+   url = /imagen/mongo/<original_id>
+
+> 3 MB -> Mongo original + comprimida
+   tamano_imagen = tamaño real original
+   tamano_imagen_comprimida = tamaño comprimido
+   compressed_file_id = valor válido
+   url = /imagen/mongo/<compressed_id>
+   url_original = /imagen/original/<original_id>
+```
+
+Ejemplo real válido:
+- un registro de 2.1 MB debe tener `tamano_imagen` con el valor real y `tamano_imagen_comprimida` en `null`
+- un registro de 3.7 MB debe tener `tamano_imagen_comprimida` distinto de `null` y `compressed_file_id` presente
+
+Además, para confirmar que no quedó un valor antiguo de compresión en una imagen media, se puede validar esta condición:
+
+```javascript
+use mercancia
+const media = db.producto.findOne({ producto: '__test_medium_direct' })
+printjson(media)
+```
+
+Y la comprobación correcta es:
+
+```javascript
+media.tamano_imagen_comprimida === null
+media.compressed_file_id === null
+```
+
+Comandos para verificarlo directamente en MongoDB:
+
+```javascript
+use mercancia
+db.producto.find({}, {
+  producto: 1,
+  tamano_imagen: 1,
+  tamano_imagen_comprimida: 1,
+  compressed_file_id: 1,
+  original_file_id: 1,
+  tipo: 1,
+  url: 1
+})
+```
+
+```javascript
+use mercancia
+db.producto.find({ tamano_imagen_comprimida: { $ne: null } }, {
+  producto: 1,
+  tamano_imagen: 1,
+  tamano_imagen_comprimida: 1,
+  compressed_file_id: 1,
+  tipo: 1,
+  url: 1
+})
+```
+
+Estos comandos permiten revisar si cada imagen grande está quedando con los campos correctos según su tamaño y detectar cualquier registro que haya quedado con datos de compresión aunque no corresponda.
+
+### 11) Verificación adicional en la interfaz y en archivos locales
+Además del MongoDB, también se debe revisar:
+
+1. Que la vista de productos muestre:
+   - imagen pequeña directamente en la tabla
+   - imagen entre 1 MB y 3 MB con la URL y el botón para ver la original
+   - imagen > 3 MB con la URL y el botón para ver la original, sin que se muestre la imagen completa original en la fila
+2. Que la página de login bloquee el acceso a `/productos` si no hay sesión activa.
+3. Que los archivos locales estén cifrados dentro de `images/original` y `images/comprimidas`.
+4. Que la carpeta `images/comprimidas` solo contenga archivos con tamaño comprimido para los registros > 3 MB.
+5. Que una imagen de 2 MB no llegue a tener `tamano_imagen_comprimida` distinto de `null`.
+
+### 12) Editar una imagen existente
 Cuando se quiera cambiar la imagen de un producto ya registrado:
 1. abrir el producto en edición
 2. eliminar o limpiar la URL existente que estaba asociada a esa imagen

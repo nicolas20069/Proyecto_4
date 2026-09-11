@@ -141,18 +141,36 @@ class Proyecto4AuthCRUDTests(unittest.TestCase):
         self.assertIsNotNone(medium)
         self.assertIsNotNone(large)
         self.assertIsNotNone(medium.get('original_file_id'))
-        self.assertIsNotNone(medium.get('compressed_file_id'))
+        self.assertIsNone(medium.get('compressed_file_id'))
         self.assertIsNotNone(large.get('compressed_file_id'))
-        self.assertEqual(medium.get('url'), f'/imagen/mongo/{medium.get("compressed_file_id")}')
+        self.assertEqual(medium.get('url'), f'/imagen/mongo/{medium.get("original_file_id")}')
         self.assertEqual(large.get('url'), f'/imagen/mongo/{large.get("compressed_file_id")}')
         self.assertGreaterEqual(medium.get('tamano_imagen', 0), 2 * 1024 * 1024)
-        self.assertGreaterEqual(large.get('tamano_imagen_comprimida', 0), 0)
+        self.assertIsNotNone(large.get('tamano_imagen_comprimida'))
+
+    def test_medium_images_keep_compressed_fields_null(self):
+        image = Image.new('RGB', (2000, 2000), color='orange')
+        buffer = io.BytesIO()
+        image.save(buffer, format='PNG')
+        payload = buffer.getvalue() + b'\x00' * (2 * 1024 * 1024)
+        payload = payload[:2 * 1024 * 1024]
+        result = clasificar_y_guardar_imagen(
+            200004,
+            {'producto': '__test_medium_regression', 'marca': 'X', 'precio': '1', 'descripcion': 'x'},
+            payload,
+            'image/png',
+            'archivo',
+        )
+        self.assertEqual(result['kind'], 'mongo_original')
+        self.assertIsNone(result['metadata'].get('tamano_imagen_comprimida'))
+        self.assertIsNone(result['metadata'].get('compressed_file_id'))
+        self.assertIsNone(result['metadata'].get('url_original'))
 
     def test_gridfs_large_image_storage_is_valid(self):
         image = Image.new('RGB', (2000, 2000), color='purple')
         buffer = io.BytesIO()
         image.save(buffer, format='PNG')
-        payload = buffer.getvalue() + b'\x00' * (2 * 1024 * 1024)
+        payload = buffer.getvalue() + b'\x00' * (4 * 1024 * 1024)
 
         result = clasificar_y_guardar_imagen(
             999999,
@@ -238,10 +256,11 @@ class Proyecto4AuthCRUDTests(unittest.TestCase):
             'image/png',
             'archivo',
         )
-        self.assertEqual(medium['kind'], 'mongo_compressed')
+        self.assertEqual(medium['kind'], 'mongo_original')
         self.assertIn('original_file_id', medium['metadata'])
-        self.assertIn('compressed_file_id', medium['metadata'])
-        self.assertEqual(medium['metadata']['url'], f"/imagen/mongo/{medium['metadata']['compressed_file_id']}")
+        self.assertIsNone(medium['metadata'].get('compressed_file_id'))
+        self.assertIsNone(medium['metadata'].get('tamano_imagen_comprimida'))
+        self.assertEqual(medium['metadata']['url'], f"/imagen/mongo/{medium['metadata']['original_file_id']}")
 
         large = clasificar_y_guardar_imagen(
             200003,
@@ -251,7 +270,9 @@ class Proyecto4AuthCRUDTests(unittest.TestCase):
             'archivo',
         )
         self.assertEqual(large['kind'], 'mongo_compressed')
+        self.assertIn('original_file_id', large['metadata'])
         self.assertIn('compressed_file_id', large['metadata'])
+        self.assertIsNotNone(large['metadata'].get('tamano_imagen_comprimida'))
         self.assertEqual(large['metadata']['url'], f"/imagen/mongo/{large['metadata']['compressed_file_id']}")
 
     def test_encrypted_local_storage_and_compressed_folder(self):
