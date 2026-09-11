@@ -10,5 +10,13 @@ __pycache__/
 .env
 .env.*
 
+# Archivos de documentación generados localmente
+*.log
+*.tmp
+
+# Archivos de imágenes cifradas en almacenamiento local
+images/**/*.enc
+images/**/*.bin
+
 # Editor / VS Code
 .vscode/

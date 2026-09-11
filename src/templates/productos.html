@@ -16,9 +16,14 @@
 <main class="container py-4">
   <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
     <div><h1 class="h3 mb-1">Productos</h1><p class="text-secondary mb-0">Productos e imágenes de MySQL y MongoDB</p></div>
-    <button type="button" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#formularioModal" {% if error_carga %}disabled{% endif %}>
-      <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><use href="#agregar"/></svg> Agregar producto
-    </button>
+    <div class="d-flex align-items-center gap-2">
+      <button type="button" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#formularioModal" {% if error_carga %}disabled{% endif %}>
+        <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><use href="#agregar"/></svg> Agregar producto
+      </button>
+      <a href="{{ url_for('productos_c.logout') }}" class="btn btn-outline-secondary">
+        Cerrar sesión
+      </a>
+    </div>
   </div>
   {% for categoria, mensaje in get_flashed_messages(with_categories=true) %}
   <div class="alert alert-{{ categoria }} alert-dismissible fade show" role="alert">{{ mensaje }}<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Cerrar"></button></div>
@@ -35,11 +40,30 @@
       <th scope="row">{{ i.idproducto if i.idproducto is not none else 'Pendiente' }}</th>
       <td>{{ i.producto }}</td><td>{{ i.marca or '—' }}</td><td class="text-nowrap">{{ i.precio if i.precio != '' else 'Pendiente' }}</td>
       <td style="min-width: 160px; max-width: 300px; overflow-wrap: anywhere">{{ i.descripcion or '—' }}</td>
-      <td>{% if i.url.startswith('https://') or i.url.startswith('http://') %}<img src="{{ i.url }}" width="90" height="65" style="object-fit: contain" loading="lazy" referrerpolicy="no-referrer" alt="{{ i.producto }}">{% else %}<span class="text-secondary">Sin imagen</span>{% endif %}</td>
+      <td>
+        {% set tamano = i.documento.tamano_imagen if i.documento and i.documento.tamano_imagen is defined else 0 %}
+        {% if tamano > 1048576 %}
+          <code class="small text-break d-inline-block">{{ i.url }}</code>
+          {% if i.url_original %}
+            <div class="mt-2">
+              <button type="button" class="btn btn-sm btn-outline-dark" data-bs-toggle="modal" data-bs-target="#imagenOriginalModal" data-imagen="{{ i.url_original }}" data-producto="{{ i.producto }}">Ver original</button>
+            </div>
+          {% endif %}
+        {% elif i.url and (i.url.startswith('https://') or i.url.startswith('http://') or i.url.startswith('/')) %}
+          <img src="{{ i.url }}" width="90" height="65" style="object-fit: contain" loading="lazy" referrerpolicy="no-referrer" alt="{{ i.producto }}">
+          {% if i.url_original %}
+            <div class="mt-2">
+              <button type="button" class="btn btn-sm btn-outline-dark" data-bs-toggle="modal" data-bs-target="#imagenOriginalModal" data-imagen="{{ i.url_original }}" data-producto="{{ i.producto }}">Ver original</button>
+            </div>
+          {% endif %}
+        {% else %}
+          <span class="text-secondary">Sin imagen</span>
+        {% endif %}
+      </td>
       <td><span class="badge {{ 'text-bg-success' if i.origen == 'MySQL + MongoDB' else 'text-bg-warning' }}">{{ i.origen }}</span></td>
       <td class="text-end text-nowrap">
         <button type="button" class="btn btn-outline-primary btn-sm" title="Editar producto" aria-label="Editar {{ i.producto }}" data-bs-toggle="modal" data-bs-target="#formularioModal"
-          data-clave="{{ i.clave }}" data-producto="{{ i.producto }}" data-marca="{{ i.marca }}" data-precio="{{ i.precio }}" data-descripcion="{{ i.descripcion }}" data-url="{{ i.url }}">
+          data-idproducto="{{ i.idproducto }}" data-clave="{{ i.clave }}" data-producto="{{ i.producto }}" data-marca="{{ i.marca }}" data-precio="{{ i.precio }}" data-descripcion="{{ i.descripcion }}" data-url="{{ i.url }}">
           <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><use href="#editar"/></svg>
         </button>
         <button type="button" class="btn btn-outline-danger btn-sm" title="Eliminar producto" aria-label="Eliminar {{ i.producto }}" data-bs-toggle="modal" data-bs-target="#eliminarModal" data-clave="{{ i.clave }}" data-producto="{{ i.producto }}">
@@ -55,16 +79,17 @@
 </main>
 <div class="modal fade" id="formularioModal" tabindex="-1" aria-labelledby="formularioTitulo" aria-hidden="true">
   <div class="modal-dialog modal-lg"><div class="modal-content">
-    <form action="{{ url_for('productos_c.guardar_producto') }}" method="post" id="productoForm" novalidate>
+    <form action="{{ url_for('productos_c.guardar_producto') }}" method="post" id="productoForm" novalidate enctype="multipart/form-data">
       <div class="modal-header"><h2 class="modal-title fs-5" id="formularioTitulo">Agregar producto</h2><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button></div>
       <div class="modal-body">
-        <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}"><input type="hidden" name="clave" id="clave">
+        <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}"><input type="hidden" name="clave" id="clave"><input type="hidden" name="idproducto" id="idproducto">
         <div class="alert alert-warning d-none" id="validacion" role="alert"></div>
         <div class="row g-3">
           <div class="col-md-6"><label for="producto" class="form-label">Producto *</label><input class="form-control" id="producto" name="producto" required maxlength="200"><div class="invalid-feedback">Escribe el nombre del producto.</div></div>
           <div class="col-md-6"><label for="marca" class="form-label">Marca *</label><input class="form-control" id="marca" name="marca" required maxlength="200"><div class="invalid-feedback">Escribe la marca.</div></div>
           <div class="col-md-6"><label for="precio" class="form-label">Precio *</label><input class="form-control" id="precio" name="precio" type="text" inputmode="decimal" required pattern="[0-9]+([.,][0-9]{1,2})?" maxlength="13" aria-describedby="precioAyuda"><div id="precioAyuda" class="form-text">Solo números, desde 0, con máximo dos decimales.</div><div class="invalid-feedback">Ingresa un precio válido, por ejemplo 150.00.</div></div>
           <div class="col-md-6"><label for="url" class="form-label">URL de la imagen</label><input class="form-control" id="url" name="url" type="url" pattern="https?://.+" maxlength="2000" placeholder="https://..."><div class="invalid-feedback">Ingresa una dirección http:// o https:// válida.</div></div>
+          <div class="col-12"><label for="imagen" class="form-label">Seleccionar imagen desde el equipo</label><input class="form-control" id="imagen" name="imagen" type="file" accept="image/*"></div>
           <div class="col-12"><label for="descripcion" class="form-label">Descripción</label><textarea class="form-control" id="descripcion" name="descripcion" rows="3" maxlength="2000"></textarea></div>
         </div>
       </div>
@@ -76,26 +101,49 @@
   <div class="modal-dialog modal-dialog-centered"><div class="modal-content">
     <form action="{{ url_for('productos_c.eliminar_producto') }}" method="post">
       <div class="modal-header"><h2 class="modal-title fs-5" id="eliminarTitulo">Confirmar eliminación</h2><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button></div>
-      <div class="modal-body"><input type="hidden" name="csrf_token" value="{{ session.csrf_token }}"><input type="hidden" name="clave" id="eliminarClave">
+      <div class="modal-body"><input type="hidden" name="csrf_token" value="{{ session.csrf_token }}"><input type="hidden" name="idproducto" id="eliminarIdproducto"><input type="hidden" name="clave" id="eliminarClave">
         <p>¿Estás seguro de que quieres eliminar <strong id="eliminarNombre"></strong>?</p><p class="text-danger mb-0">Se eliminará la fila de MySQL y su documento de MongoDB. Esta acción no se puede deshacer.</p>
       </div>
       <div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button><button type="submit" class="btn btn-danger">Sí, eliminar</button></div>
     </form>
   </div></div>
 </div>
+<div class="modal fade" id="imagenOriginalModal" tabindex="-1" aria-labelledby="imagenOriginalTitulo" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 class="modal-title fs-5" id="imagenOriginalTitulo">Imagen original</h2>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+      </div>
+      <div class="modal-body text-center">
+        <img id="imagenOriginalPreview" src="" alt="Imagen original" class="img-fluid rounded shadow-sm" style="max-height: 75vh;">
+      </div>
+    </div>
+  </div>
+</div>
 <script>
 const formulario = document.getElementById('productoForm');
 const aviso = document.getElementById('validacion');
+const imagenOriginalModal = document.getElementById('imagenOriginalModal');
+imagenOriginalModal.addEventListener('show.bs.modal', event => {
+  const button = event.relatedTarget;
+  const img = document.getElementById('imagenOriginalPreview');
+  const producto = button.dataset.producto || 'Imagen original';
+  img.src = button.dataset.imagen || '';
+  img.alt = producto;
+  document.getElementById('imagenOriginalTitulo').textContent = 'Imagen original: ' + producto;
+});
 document.getElementById('formularioModal').addEventListener('show.bs.modal', event => {
   formulario.reset();
   formulario.classList.remove('was-validated');
   aviso.classList.add('d-none');
   const datos = event.relatedTarget.dataset;
   document.getElementById('formularioTitulo').textContent = datos.clave ? 'Editar producto' : 'Agregar producto';
-  for (const campo of ['clave', 'producto', 'marca', 'precio', 'descripcion', 'url']) document.getElementById(campo).value = datos[campo] || '';
+  for (const campo of ['clave', 'idproducto', 'producto', 'marca', 'precio', 'descripcion', 'url']) document.getElementById(campo).value = datos[campo] || '';
 });
 document.getElementById('eliminarModal').addEventListener('show.bs.modal', event => {
   document.getElementById('eliminarClave').value = event.relatedTarget.dataset.clave;
+  document.getElementById('eliminarIdproducto').value = event.relatedTarget.dataset.idproducto || '';
   document.getElementById('eliminarNombre').textContent = event.relatedTarget.dataset.producto;
 });
 formulario.addEventListener('submit', event => {
